@@ -31,6 +31,20 @@ export function getDailyAllowance(wallet, date = new Date()) {
   return Math.floor(monthlyAllowance / days) + (date.getDate() === days ? monthlyAllowance % days : 0);
 }
 
+export function getExpectedExhaustionDate(wallet, remainingPeriods, date = new Date()) {
+  const expectedDate = new Date(date);
+  if (wallet.mode === "daily") {
+    expectedDate.setDate(expectedDate.getDate() + remainingPeriods);
+    return expectedDate;
+  }
+
+  const day = expectedDate.getDate();
+  expectedDate.setDate(1);
+  expectedDate.setMonth(expectedDate.getMonth() + remainingPeriods);
+  expectedDate.setDate(Math.min(day, getPeriodDates(expectedDate).days));
+  return expectedDate;
+}
+
 export function calculateBudget(wallet, expenses = [], incomesOrDate = [], dateValue = new Date()) {
   let incomes = expenses.filter((entry) => entry.type === "income");
   let date = dateValue;

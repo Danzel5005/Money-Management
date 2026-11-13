@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateBudget, getDailyAllowance, getMonthlyAllowance, getPeriodDates, getStatus } from "./budget.js";
+import { calculateBudget, getDailyAllowance, getExpectedExhaustionDate, getMonthlyAllowance, getPeriodDates, getStatus } from "./budget.js";
 
 test("daily budget keeps the allowance fixed and recalculates remaining coverage", () => {
   const wallet = { amount: 3_000_000, periods: 30, mode: "daily" };
@@ -57,4 +57,12 @@ test("daily and monthly rounding remainders land in their final periods", () => 
   assert.equal(getMonthlyAllowance(monthlyWallet, new Date(2026, 10, 1)), 10_000_002);
   assert.equal(getDailyAllowance(monthlyWallet, new Date(2026, 10, 29)), 333_333);
   assert.equal(getDailyAllowance(monthlyWallet, new Date(2026, 10, 30)), 333_345);
+});
+
+test("expected exhaustion date follows daily periods and clamps monthly dates", () => {
+  const dailyWallet = { amount: 3_000_000, periods: 30, mode: "daily" };
+  const monthlyWallet = { amount: 3_000_000, periods: 3, mode: "monthly" };
+
+  assert.equal(getExpectedExhaustionDate(dailyWallet, 5, new Date(2026, 10, 7)).toDateString(), new Date(2026, 10, 12).toDateString());
+  assert.equal(getExpectedExhaustionDate(monthlyWallet, 1, new Date(2026, 0, 31)).toDateString(), new Date(2026, 1, 28).toDateString());
 });

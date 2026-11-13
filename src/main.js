@@ -1,4 +1,4 @@
-import { calculateBudget, DEFAULT_CATEGORIES, formatRupiah, getDailyAllowance, getPeriodDates, getStatus, toDateKey } from "./budget.js";
+import { calculateBudget, DEFAULT_CATEGORIES, formatRupiah, getDailyAllowance, getExpectedExhaustionDate, getStatus, toDateKey } from "./budget.js";
 import { Capacitor } from "@capacitor/core";
 import { CapacitorCalendar } from "@ebarooni/capacitor-calendar";
 import "./style.css";
@@ -147,13 +147,7 @@ function renderHome(budget) {
   const recent = state.expenses.filter((item) => item.type !== "income").sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 4);
   const spentPercent = budget.totalSpent / Math.max(budget.effectiveAmount, 1);
   const remainingUnit = isDaily ? "hari" : "bulan";
-  const future = new Date(today);
-  if (isDaily) future.setDate(future.getDate() + budget.remainingPeriods);
-  else {
-    future.setDate(1);
-    future.setMonth(future.getMonth() + budget.remainingPeriods);
-    future.setDate(Math.min(today.getDate(), getPeriodDates(future).days));
-  }
+  const future = getExpectedExhaustionDate(state.wallet, budget.remainingPeriods, today);
 
   return `<div class="page-heading"><div><p class="eyebrow">RINGKASAN DOMPET</p><h1>Halo, tetap di jalur.</h1><p class="muted">Setiap keputusan kecil bikin uangmu bertahan lebih lama.</p></div><div class="page-heading-actions"><button class="text-button" data-action="add-income">${icon("plus", 16)} Pemasukan</button><button class="text-button" data-action="settings">${icon("edit", 16)} Atur dompet</button></div></div>
     ${status === "over" ? `<div class="alert alert-over"><span class="alert-icon">!</span><p><b>Kamu keluar jatah.</b> Uangmu sekarang cukup untuk sekitar ${budget.remainingPeriods} ${remainingUnit} lagi.</p></div>` : ""}
@@ -172,13 +166,15 @@ function expenseRow(expense) {
   return `<article class="expense-row"><span class="category-mark category-${escapeHTML(expense.category)}">${initial}</span><span class="expense-info"><b>${escapeHTML(expense.category)}</b><small>${escapeHTML(expense.note || dateLabel(date, { day: "numeric", month: "short" }))} · ${expense.time || ""}</small></span><b class="expense-amount ${isIncome ? "income-amount" : ""}">${isIncome ? "+" : "-"}${rupiah(expense.amount)}</b><button class="row-edit" data-edit="${expense.id}" aria-label="Edit transaksi">${icon("edit", 15)}</button></article>`;
 }
 
-function renderCalendar() {
+function renderCalendar(budget) {
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const days = new Date(year, month + 1, 0).getDate();
   const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
   const selectedKey = state.selectedDate || toDateKey(today);
+  const todayKey = toDateKey(today);
+  const expectedEndKey = toDateKey(getExpectedExhaustionDate(state.wallet, budget.remainingPeriods, today));
   const week = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
   const cells = [];
   for (let blank = 0; blank < firstDay; blank += 1) cells.push('<span class="calendar-blank"></span>');
@@ -190,13 +186,14 @@ function renderCalendar() {
     const status = getStatus(total, dailyCap);
     const isToday = key === toDateKey(today);
     const isSelected = key === selectedKey;
-    cells.push(`<button class="calendar-day ${expenses.length ? `day-${status}` : ""} ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""} ${key > toDateKey(today) ? "is-future" : ""}" data-date="${key}" aria-label="${day} ${monthLabel(calendarDate)}${expenses.length ? `, ${rupiah(total)}` : ""}" aria-pressed="${isSelected}">${day}${expenses.length ? `<i></i>` : ""}</button>`);
+    const inBalancePeriod = budget.remaining > 0 && key >= todayKey && key <= expectedEndKey;
+    cells.push(`<button class="calendar-day ${expenses.length ? `day-${status}` : ""} ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""} ${key > todayKey ? "is-future" : ""} ${inBalancePeriod ? "is-balance-period" : ""}" data-date="${key}" aria-label="${day} ${monthLabel(calendarDate)}${expenses.length ? `, ${rupiah(total)}` : ""}${inBalancePeriod ? ", periode saldo bertahan" : ""}" aria-pressed="${isSelected}">${day}${expenses.length ? `<i></i>` : ""}</button>`);
   }
   const selectedExpenses = state.expenses.filter((item) => item.type !== "income" && item.date === selectedKey).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const selectedTotal = selectedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
 
-  return `<div class="page-heading"><div><p class="eyebrow">JEJAK PENGELUARAN</p><h1>Kalender</h1><p class="muted">Lihat kebiasaan belanjamu, hari demi hari.</p></div></div>
-    <div class="calendar-layout"><section class="card calendar-card"><div class="calendar-head"><button class="icon-button" data-action="prev-month" aria-label="Bulan sebelumnya">${icon("left")}</button><h2>${monthLabel(calendarDate)}</h2><button class="icon-button" data-action="next-month" aria-label="Bulan berikutnya">${icon("right")}</button></div><div class="calendar-grid calendar-weekdays">${week.map((day) => `<span>${day}</span>`).join("")}</div><div class="calendar-grid">${cells.join("")}</div><div class="calendar-legend"><span><i class="legend-safe"></i>Aman</span><span><i class="legend-near"></i>Hampir habis</span><span><i class="legend-over"></i>Keluar jatah</span></div></section>
+  return `<div class="page-heading"><div><p class="eyebrow">JEJAK PENGELUARAN</p><h1>Kalender</h1><p class="muted">Lihat status belanja dan perkiraan periode saldo bertahan.</p></div></div>
+    <div class="calendar-layout"><section class="card calendar-card"><div class="calendar-head"><button class="icon-button" data-action="prev-month" aria-label="Bulan sebelumnya">${icon("left")}</button><h2>${monthLabel(calendarDate)}</h2><button class="icon-button" data-action="next-month" aria-label="Bulan berikutnya">${icon("right")}</button></div><div class="calendar-grid calendar-weekdays">${week.map((day) => `<span>${day}</span>`).join("")}</div><div class="calendar-grid">${cells.join("")}</div><div class="calendar-legend"><span><i class="legend-safe"></i>Aman</span><span><i class="legend-near"></i>Hampir habis</span><span><i class="legend-over"></i>Keluar jatah</span><span><i class="legend-balance-period"></i>Periode saldo bertahan</span></div></section>
       <section class="card selected-day-card"><p class="eyebrow">RINCIAN HARI</p><h2>${dateLabel(new Date(`${selectedKey}T12:00:00`), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h2><div class="selected-total"><span>Total pengeluaran</span><b>${rupiah(selectedTotal)}</b></div>${selectedExpenses.length ? `<div class="expense-list">${selectedExpenses.map(expenseRow).join("")}</div>` : `<div class="empty-inline"><span class="empty-icon">${icon("calendar", 20)}</span><div><b>Belum ada catatan</b><small>Hari ini masih jadi kesempatan baru.</small></div></div>`}</section>
     </div>`;
 }
@@ -230,10 +227,8 @@ function renderReports(budget) {
 function renderExpenseModal() {
   const expense = editingExpenseId ? state.expenses.find((item) => item.id === editingExpenseId) : null;
   const entryType = expense?.type || (addingIncome ? "income" : "expense");
-  const dateValue = expense?.date || toDateKey(today);
-  const timeValue = expense?.time || new Date().toTimeString().slice(0, 5);
   const categoryOptions = entryType === "income" ? ["Pemasukan"] : state.categories;
-  return `<div class="modal-backdrop" data-action="close-modal"><section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><div><p class="eyebrow">${expense ? "PERBARUI CATATAN" : "CATAT TRANSAKSI"}</p><h2 id="modal-title">${expense ? (entryType === "income" ? "Edit pemasukan" : "Edit pengeluaran") : (entryType === "income" ? "Pemasukan baru" : "Pengeluaran baru")}</h2></div><button class="icon-button" data-action="close-modal" aria-label="Tutup">${icon("close")}</button></div><form id="expense-form" class="form-stack"><label>Jenis transaksi<select name="entryType"><option value="expense" ${entryType === "expense" ? "selected" : ""}>Pengeluaran</option><option value="income" ${entryType === "income" ? "selected" : ""}>Pemasukan</option></select></label><label>Nominal<div class="money-input"><span>Rp</span><input name="amount" type="text" inputmode="numeric" data-currency-input value="${formatCurrencyInput(expense?.amount ?? "")}" placeholder="10.000" required autofocus></div></label><label>Kategori<select name="category">${categoryOptions.map((category) => `<option value="${escapeHTML(category)}" ${expense?.category === category ? "selected" : ""}>${escapeHTML(category)}</option>`).join("")}</select></label><label>Catatan <span class="optional">(opsional)</span><input name="note" maxlength="80" value="${escapeHTML(expense?.note || "")}" placeholder="Contoh: makan siang"></label><div class="form-row"><label>Tanggal<input name="date" type="date" value="${dateValue}" readonly required></label><label>Waktu<input name="time" type="time" value="${timeValue}" readonly required></label></div><p class="form-error" aria-live="polite"></p><div class="modal-actions">${expense ? `<button class="danger-button" type="button" data-action="delete-expense" data-id="${expense.id}">${icon("trash", 17)} Hapus</button>` : ""}<button class="primary-button" type="submit">${expense ? "Simpan perubahan" : "Simpan transaksi"}</button></div></form></section></div>`;
+  return `<div class="modal-backdrop" data-action="close-modal"><section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><div><p class="eyebrow">${expense ? "PERBARUI CATATAN" : "CATAT TRANSAKSI"}</p><h2 id="modal-title">${expense ? (entryType === "income" ? "Edit pemasukan" : "Edit pengeluaran") : (entryType === "income" ? "Pemasukan baru" : "Pengeluaran baru")}</h2></div><button class="icon-button" data-action="close-modal" aria-label="Tutup">${icon("close")}</button></div><form id="expense-form" class="form-stack"><label>Jenis transaksi<select name="entryType"><option value="expense" ${entryType === "expense" ? "selected" : ""}>Pengeluaran</option><option value="income" ${entryType === "income" ? "selected" : ""}>Pemasukan</option></select></label><label>Nominal<div class="money-input"><span>Rp</span><input name="amount" type="text" inputmode="numeric" data-currency-input value="${formatCurrencyInput(expense?.amount ?? "")}" placeholder="10.000" required autofocus></div></label><label>Kategori<select name="category">${categoryOptions.map((category) => `<option value="${escapeHTML(category)}" ${expense?.category === category ? "selected" : ""}>${escapeHTML(category)}</option>`).join("")}</select></label><label>Catatan <span class="optional">(opsional)</span><input name="note" maxlength="80" value="${escapeHTML(expense?.note || "")}" placeholder="Contoh: makan siang"></label><p class="form-error" aria-live="polite"></p><div class="modal-actions">${expense ? `<button class="danger-button" type="button" data-action="delete-expense" data-id="${expense.id}">${icon("trash", 17)} Hapus</button>` : ""}<button class="primary-button" type="submit">${expense ? "Simpan perubahan" : "Simpan transaksi"}</button></div></form></section></div>`;
 }
 
 function renderSettings() {
@@ -274,13 +269,13 @@ async function createCalendarReminder() {
       }
     }
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() + 1);
+    const budget = calculateBudget(state.wallet, state.expenses, today);
+    const startDate = getExpectedExhaustionDate(state.wallet, budget.remainingPeriods, today);
     startDate.setHours(20, 0, 0, 0);
     const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
     await CapacitorCalendar.createEventWithPrompt({
-      title: "Catat pengeluaran - Dompet Jatah",
-      description: "Pengingat untuk mencatat pengeluaran harian di Dompet Jatah.",
+      title: "Perkiraan saldo habis - Dompet Jatah",
+      description: `Saldo dompet diperkirakan habis pada ${dateLabel(startDate)}. Atur ulang dompet atau catat pemasukan jika diperlukan.`,
       startDate: startDate.getTime(),
       endDate: endDate.getTime(),
     });
@@ -367,17 +362,15 @@ app.addEventListener("submit", (event) => {
   if (form.id === "expense-form") {
     const amount = parseCurrencyInput(data.get("amount"));
     const entryType = data.get("entryType") === "income" ? "income" : "expense";
-    const date = data.get("date");
     const error = form.querySelector(".form-error");
     const previous = editingExpenseId && state.expenses.find((expense) => expense.id === editingExpenseId);
     if (!Number.isSafeInteger(amount) || amount <= 0) {
       error.textContent = "Masukkan nominal lebih dari Rp0.";
       return;
     }
-    if (date > toDateKey(today) || (!previous && date !== toDateKey(today))) {
-      error.textContent = "Transaksi baru hanya dapat dicatat pada tanggal hari ini.";
-      return;
-    }
+    const recordedAt = new Date();
+    const date = previous?.date || toDateKey(recordedAt);
+    const time = previous?.time || recordedAt.toTimeString().slice(0, 5);
     const expense = {
       id: previous?.id || crypto.randomUUID(),
       type: entryType,
@@ -385,8 +378,8 @@ app.addEventListener("submit", (event) => {
       category: entryType === "income" ? "Pemasukan" : data.get("category"),
       note: data.get("note").trim(),
       date,
-      time: data.get("time"),
-      timestamp: `${date}T${data.get("time")}:00`,
+      time,
+      timestamp: previous?.timestamp || `${date}T${time}:00`,
     };
     state.expenses = previous
       ? state.expenses.map((item) => item.id === previous.id ? expense : item)
