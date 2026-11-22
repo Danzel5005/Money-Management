@@ -5,7 +5,7 @@ memantau pengeluaran, dan memperkirakan berapa lama saldo akan bertahan.
 
 ## Fitur
 
-- Membuat satu dompet dengan saldo awal dan jatah per hari atau per bulan.
+- Mengelola beberapa dompet, saldo awal, dan jatah harian masing-masing.
 - Mencatat pemasukan dan pengeluaran, termasuk kategori dan catatan opsional.
   Tanggal dan waktu transaksi otomatis mengikuti saat transaksi disimpan.
 - Melihat sisa saldo, jatah, status pemakaian, dan perkiraan tanggal saldo habis.
@@ -15,7 +15,11 @@ memantau pengeluaran, dan memperkirakan berapa lama saldo akan bertahan.
   rincian kategori, serta daftar transaksi.
 - Membuat event pengingat pada tanggal saldo diperkirakan habis di kalender
   perangkat.
-- Mengubah pengaturan dompet serta mengedit atau menghapus transaksi.
+- Menerima pengingat jatah harian pada pukul 10.00, 15.00, 19.00, dan 23.00.
+- Mengelola kategori pemasukan dan pengeluaran, serta mengekspor laporan PDF
+  untuk rentang tanggal yang dipilih.
+- Mengedit atau menghapus dompet dan transaksi tanpa menghilangkan catatan
+  transaksi saat dompet dipindahkan.
 - Menyimpan data di perangkat menggunakan penyimpanan lokal; tidak memerlukan
   akun atau koneksi internet untuk penggunaan sehari-hari.
 
@@ -44,8 +48,7 @@ dipakai sebagai resource Android.
 
 ## Build Android
 
-Build APK tidak dijalankan sebagai bagian dari perubahan ini. Jika nanti siap,
-pastikan JDK 21 atau lebih baru dan Android SDK API 36/build tools tersedia,
+Pastikan JDK 21 atau lebih baru dan Android SDK API 36/build tools tersedia,
 lalu jalankan:
 
 ```sh

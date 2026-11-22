@@ -1,4 +1,5 @@
 export const DEFAULT_CATEGORIES = ["Makanan", "Transportasi", "Belanja", "Tagihan", "Hiburan", "Lainnya"];
+export const DEFAULT_INCOME_CATEGORIES = ["Gaji", "Bonus", "Lainnya"];
 
 export function getPeriodDates(date = new Date()) {
   const year = date.getFullYear();
@@ -91,6 +92,92 @@ export function calculateBudget(wallet, expenses = [], incomesOrDate = [], dateV
     dailyStatus,
     monthlyStatus,
     status: wallet.mode === "daily" ? dailyStatus : monthlyStatus,
+  };
+}
+
+export function calculateRemainingDays(balance, dailyAllowance) {
+  if (!Number.isFinite(balance) || !Number.isFinite(dailyAllowance) || dailyAllowance <= 0 || balance <= dailyAllowance) return 0;
+  return Math.floor(Math.max(balance - dailyAllowance, 0) / dailyAllowance);
+}
+
+export function getWalletDailyAllowance(wallet, date = new Date()) {
+  return Number.isFinite(wallet.dailyAllowance)
+    ? Math.max(0, wallet.dailyAllowance)
+    : getDailyAllowance(wallet, date);
+}
+
+export function calculateWalletsBudget(wallets, expenses = [], date = new Date()) {
+  const balances = wallets.map((wallet) => {
+    const transactions = expenses.filter((entry) => entry.walletId === wallet.id);
+    return wallet.amount
+      + transactions.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + entry.amount, 0)
+      - transactions.filter((entry) => entry.type !== "income").reduce((sum, entry) => sum + entry.amount, 0);
+  });
+  const dailyAllowance = wallets.reduce((sum, wallet) => sum + getWalletDailyAllowance(wallet, date), 0);
+  const totalBalance = balances.reduce((sum, balance) => sum + balance, 0);
+  const spentToday = expenses
+    .filter((entry) => entry.type !== "income" && entry.date === toDateKey(date))
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const totalSpent = expenses.filter((entry) => entry.type !== "income").reduce((sum, entry) => sum + entry.amount, 0);
+  const totalIncome = expenses.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + entry.amount, 0);
+  const remainingDays = calculateRemainingDays(totalBalance, dailyAllowance);
+  const expectedExhaustionDate = new Date(date);
+  expectedExhaustionDate.setDate(expectedExhaustionDate.getDate() + remainingDays);
+
+  return {
+    balances,
+    totalBalance,
+    dailyAllowance,
+    spentToday,
+    totalSpent,
+    totalIncome,
+    remainingDays,
+    expectedExhaustionDate,
+    remainingToday: dailyAllowance - spentToday,
+    status: getStatus(spentToday, dailyAllowance),
+  };
+}
+
+export function migrateLegacyState(saved) {
+  if (Array.isArray(saved.wallets)) {
+    return {
+      ...saved,
+      wallets: saved.wallets.map((wallet) => ({ ...wallet, id: wallet.id || crypto.randomUUID() })),
+      expenses: (saved.expenses || []).map((entry) => ({
+        ...entry,
+        type: entry.type === "income" ? "income" : "expense",
+        category: entry.type === "income" && entry.category === "Pemasukan" ? "Lainnya" : entry.category,
+        walletId: entry.walletId || saved.wallets[0]?.id,
+      })),
+      categories: {
+        expense: saved.categories?.expense || (Array.isArray(saved.categories) ? saved.categories : DEFAULT_CATEGORIES),
+        income: saved.categories?.income || DEFAULT_INCOME_CATEGORIES,
+      },
+    };
+  }
+  if (!saved.wallet) return null;
+
+  const wallet = {
+    ...saved.wallet,
+    id: "wallet-default",
+    dailyAllowance: Number.isFinite(saved.wallet.dailyAllowance)
+      ? saved.wallet.dailyAllowance
+      : getDailyAllowance(saved.wallet),
+  };
+  return {
+    ...saved,
+    wallet: undefined,
+    wallets: [wallet],
+    expenses: (saved.expenses || []).map((entry) => ({
+      ...entry,
+      type: entry.type === "income" ? "income" : "expense",
+      category: entry.type === "income" && entry.category === "Pemasukan" ? "Lainnya" : entry.category,
+      walletId: wallet.id,
+    })),
+    categories: {
+      expense: Array.isArray(saved.categories) ? saved.categories : DEFAULT_CATEGORIES,
+      income: DEFAULT_INCOME_CATEGORIES,
+    },
   };
 }
 

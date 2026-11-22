@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateBudget, getDailyAllowance, getExpectedExhaustionDate, getMonthlyAllowance, getPeriodDates, getStatus } from "./budget.js";
+import { calculateBudget, calculateRemainingDays, calculateWalletsBudget, getDailyAllowance, getExpectedExhaustionDate, getMonthlyAllowance, getPeriodDates, getStatus, migrateLegacyState } from "./budget.js";
 
 test("daily budget keeps the allowance fixed and recalculates remaining coverage", () => {
   const wallet = { amount: 3_000_000, periods: 30, mode: "daily" };
@@ -65,4 +65,49 @@ test("expected exhaustion date follows daily periods and clamps monthly dates", 
 
   assert.equal(getExpectedExhaustionDate(dailyWallet, 5, new Date(2026, 10, 7)).toDateString(), new Date(2026, 10, 12).toDateString());
   assert.equal(getExpectedExhaustionDate(monthlyWallet, 1, new Date(2026, 0, 31)).toDateString(), new Date(2026, 1, 28).toDateString());
+});
+
+test("remaining days assumes today's allowance is already spent", () => {
+  assert.equal(calculateRemainingDays(100_000, 10_000), 9);
+});
+
+test("remaining days returns zero for no allowance or balance at or below allowance", () => {
+  assert.equal(calculateRemainingDays(100_000, 0), 0);
+  assert.equal(calculateRemainingDays(10_000, 10_000), 0);
+  assert.equal(calculateRemainingDays(5_000, 10_000), 0);
+});
+
+test("legacy migration keeps wallet settings and attaches old transactions", () => {
+  const migrated = migrateLegacyState({
+    wallet: { name: "Dompet Lama", amount: 1_000_000, periods: 20, mode: "daily", startDate: "2026-01-01" },
+    expenses: [
+      { id: "transaksi-lama", amount: 25_000, type: "expense", date: "2026-01-02" },
+      { id: "transaksi-tanpa-jenis", amount: 5_000, date: "2026-01-03" },
+      { id: "pemasukan-lama", amount: 50_000, type: "income", category: "Pemasukan", date: "2026-01-04" },
+    ],
+    categories: ["Makanan", "Lainnya"],
+  });
+  assert.equal(migrated.wallets[0].name, "Dompet Lama");
+  assert.equal(migrated.wallets[0].dailyAllowance, 50_000);
+  assert.equal(migrated.expenses[0].id, "transaksi-lama");
+  assert.equal(migrated.expenses[0].walletId, "wallet-default");
+  assert.equal(migrated.expenses[1].type, "expense");
+  assert.equal(migrated.expenses[2].category, "Lainnya");
+  assert.deepEqual(migrated.categories.expense, ["Makanan", "Lainnya"]);
+});
+
+test("multiple wallets add balances and daily allowances before estimating remaining days", () => {
+  const wallets = [
+    { id: "cash", amount: 60_000, dailyAllowance: 10_000 },
+    { id: "bank", amount: 40_000, dailyAllowance: 10_000 },
+  ];
+  const expenses = [
+    { walletId: "cash", amount: 15_000, type: "expense", date: "2026-11-07" },
+    { walletId: "bank", amount: 5_000, type: "income", date: "2026-11-07" },
+  ];
+  const result = calculateWalletsBudget(wallets, expenses, new Date(2026, 10, 7));
+  assert.equal(result.dailyAllowance, 20_000);
+  assert.equal(result.totalBalance, 90_000);
+  assert.equal(result.remainingDays, 3);
+  assert.equal(result.expectedExhaustionDate.toDateString(), new Date(2026, 10, 10).toDateString());
 });
