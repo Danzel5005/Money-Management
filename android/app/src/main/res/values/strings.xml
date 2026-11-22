@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dompet Jatah</string>
+    <string name="title_activity_main">Dompet Jatah</string>
+    <string name="package_name">com.dompetjatah.app</string>
+    <string name="custom_url_scheme">com.dompetjatah.app</string>
+</resources>
